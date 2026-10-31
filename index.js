@@ -99,6 +99,55 @@ async function run() {
       }
     });
 
+    // Add New Studio API Route (POST)
+    app.post('/api/studios', async (req, res) => {
+      console.log("=== ADD STUDIO ROUTE HIT ===", req.body);
+      try {
+        const {
+          title,
+          category,
+          hourlyRate,
+          securityDeposit,
+          maxCapacity,
+          location,
+          image,
+          amenities,
+          overview,
+          userName,
+          userEmail
+        } = req.body;
+
+        if (!title || !category || !hourlyRate || !location || !image) {
+          return res.status(400).send({ message: "Required fields are missing" });
+        }
+
+        const studioData = {
+          title,
+          category,
+          hourlyRate: Number(hourlyRate),
+          securityDeposit: Number(securityDeposit || 0),
+          maxCapacity: Number(maxCapacity || 1),
+          location,
+          image,
+          amenities: Array.isArray(amenities) ? amenities : [],
+          overview,
+          userName,
+          userEmail,
+          createdAt: new Date()
+        };
+
+        const result = await studiosCollection.insertOne(studioData);
+
+        return res.status(201).send({ 
+          message: "Studio added successfully", 
+          studioId: result.insertedId 
+        });
+      } catch (error) {
+        console.error("Error adding studio:", error);
+        return res.status(500).send({ message: "Failed to add studio" });
+      }
+    });
+
     // Get Featured Studios Route
     app.get('/api/studios/featured', async (req, res) => {
       try {
