@@ -1,5 +1,5 @@
 import express from 'express';
-import { MongoClient, ServerApiVersion } from 'mongodb';
+import { MongoClient, ServerApiVersion, ObjectId } from 'mongodb';
 import cors from 'cors';
 import 'dotenv/config';
 
@@ -25,15 +25,12 @@ const client = new MongoClient(uri, {
 
 async function run() {
   try {
-    // 1. Connect to MongoDB first
     await client.connect();
     const db = client.db("stdio_space");
     const studiosCollection = db.collection("studios");
     const usersCollection = db.collection("users");
     
     console.log("Successfully connected to MongoDB!");
-
-    // 2. Define Routes inside run() so collections are guaranteed to exist
 
     // Root route
     app.get('/', (req, res) => {
@@ -42,31 +39,19 @@ async function run() {
 
     // Registration API Route
     app.post('/api/auth/register', async (req, res) => {
-      console.log("=== REGISTER ROUTE HIT ===", req.body);
       try {
         const { name, email, photoURL, password } = req.body;
-        
         if (!email || !password) {
           return res.status(400).send({ message: "Email and password are required" });
         }
-
         const existingUser = await usersCollection.findOne({ email });
         if (existingUser) {
           return res.status(400).send({ message: "User already exists with this email" });
         }
-
         const result = await usersCollection.insertOne({ 
-          name, 
-          email, 
-          photoURL, 
-          password, 
-          createdAt: new Date() 
+          name, email, photoURL, password, createdAt: new Date() 
         });
-
-        return res.status(201).send({ 
-          message: "User registered successfully", 
-          userId: result.insertedId 
-        });
+        return res.status(201).send({ message: "User registered successfully", userId: result.insertedId });
       } catch (error) {
         console.error("Registration error:", error);
         return res.status(500).send({ message: "Internal server error during registration" });
@@ -75,20 +60,15 @@ async function run() {
 
     // Login API Route
     app.post('/api/auth/login', async (req, res) => {
-      console.log("=== LOGIN ROUTE HIT ===", req.body);
       try {
         const { email, password } = req.body;
-
         if (!email || !password) {
           return res.status(400).send({ message: "Email and password are required" });
         }
-
         const user = await usersCollection.findOne({ email });
-
         if (!user || user.password !== password) {
           return res.status(401).send({ message: "Invalid email or password" });
         }
-
         return res.status(200).send({ 
           message: "Login successful", 
           user: { name: user.name, email: user.email, photoURL: user.photoURL } 
@@ -101,26 +81,11 @@ async function run() {
 
     // Add New Studio API Route (POST)
     app.post('/api/studios', async (req, res) => {
-      console.log("=== ADD STUDIO ROUTE HIT ===", req.body);
       try {
-        const {
-          title,
-          category,
-          hourlyRate,
-          securityDeposit,
-          maxCapacity,
-          location,
-          image,
-          amenities,
-          overview,
-          userName,
-          userEmail
-        } = req.body;
-
+        const { title, category, hourlyRate, securityDeposit, maxCapacity, location, image, amenities, overview, userName, userEmail } = req.body;
         if (!title || !category || !hourlyRate || !location || !image) {
           return res.status(400).send({ message: "Required fields are missing" });
         }
-
         const studioData = {
           title,
           category,
@@ -135,13 +100,8 @@ async function run() {
           userEmail,
           createdAt: new Date()
         };
-
         const result = await studiosCollection.insertOne(studioData);
-
-        return res.status(201).send({ 
-          message: "Studio added successfully", 
-          studioId: result.insertedId 
-        });
+        return res.status(201).send({ message: "Studio added successfully", studioId: result.insertedId });
       } catch (error) {
         console.error("Error adding studio:", error);
         return res.status(500).send({ message: "Failed to add studio" });
@@ -151,15 +111,29 @@ async function run() {
     // Get Featured Studios Route
     app.get('/api/studios/featured', async (req, res) => {
       try {
-        const featuredStudios = await studiosCollection
-          .find({})
-          .sort({ rating: -1 })
-          .limit(6)
-          .toArray();
+        const featuredStudios = await studiosCollection.find({}).sort({ rating: -1 }).limit(6).toArray();
         return res.status(200).send(featuredStudios);
       } catch (error) {
         console.error("Error fetching featured studios:", error);
         return res.status(500).send({ message: "Failed to fetch featured studios" });
+      }
+    });
+
+    // Get Single Studio by ID Route
+    app.get('/api/studios/:id', async (req, res) => {
+      try {
+        const id = req.params.id;
+        if (!ObjectId.isValid(id)) {
+          return res.status(400).send({ message: "Invalid studio ID format" });
+        }
+        const studio = await studiosCollection.findOne({ _id: new ObjectId(id) });
+        if (!studio) {
+          return res.status(404).send({ message: "Studio not found in database" });
+        }
+        return res.status(200).send(studio);
+      } catch (error) {
+        console.error("Error fetching studio by ID:", error);
+        return res.status(500).send({ message: "Failed to fetch studio details" });
       }
     });
 
@@ -174,13 +148,12 @@ async function run() {
       }
     });
 
-    // 3. Start Server only after MongoDB is connected
     app.listen(port, () => {
       console.log(`StudioSpace server active on port ${port}`);
     });
 
   } catch (error) {
-    console.error("Failed to start server / MongoDB connection error:", error);
+    console.error("MongoDB connection error:", error);
   }
 }
 
