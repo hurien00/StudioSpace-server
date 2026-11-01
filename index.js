@@ -119,7 +119,24 @@ async function run() {
       }
     });
 
-    // Get Single Studio by ID Route
+    //  NEW: Get User Specific Listings Route (For /my-listings page)
+    app.get('/api/studios/my-listings', async (req, res) => {
+      try {
+        const email = req.query.email;
+        if (!email) {
+          return res.status(400).send({ message: "Email query parameter is required" });
+        }
+       
+        const query = { $or: [{ userEmail: email }, { ownerEmail: email }] };
+        const result = await studiosCollection.find(query).toArray();
+        return res.status(200).send(result);
+      } catch (error) {
+        console.error("Error fetching user listings:", error);
+        return res.status(500).send({ message: "Failed to fetch user listings" });
+      }
+    });
+
+    // Get Single Studio by ID Route (Must be placed AFTER /api/studios/my-listings and /api/studios/featured)
     app.get('/api/studios/:id', async (req, res) => {
       try {
         const id = req.params.id;
@@ -145,6 +162,27 @@ async function run() {
       } catch (error) {
         console.error("Error fetching all studios:", error);
         return res.status(500).send({ message: "Failed to fetch all studios" });
+      }
+    });
+
+    // NEW: Delete Studio by ID Route (For /my-listings delete action)
+    app.delete('/api/studios/:id', async (req, res) => {
+      try {
+        const id = req.params.id;
+        if (!ObjectId.isValid(id)) {
+          return res.status(400).send({ message: "Invalid studio ID format" });
+        }
+        const query = { _id: new ObjectId(id) };
+        const result = await studiosCollection.deleteOne(query);
+        
+        if (result.deletedCount === 0) {
+          return res.status(404).send({ message: "Studio not found in database" });
+        }
+
+        return res.status(200).send({ message: "Studio deleted successfully", result });
+      } catch (error) {
+        console.error("Error deleting studio:", error);
+        return res.status(500).send({ message: "Failed to delete studio" });
       }
     });
 
