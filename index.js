@@ -119,14 +119,13 @@ async function run() {
       }
     });
 
-    //  NEW: Get User Specific Listings Route (For /my-listings page)
+    // Get User Specific Listings Route
     app.get('/api/studios/my-listings', async (req, res) => {
       try {
         const email = req.query.email;
         if (!email) {
           return res.status(400).send({ message: "Email query parameter is required" });
         }
-       
         const query = { $or: [{ userEmail: email }, { ownerEmail: email }] };
         const result = await studiosCollection.find(query).toArray();
         return res.status(200).send(result);
@@ -136,7 +135,7 @@ async function run() {
       }
     });
 
-    // Get Single Studio by ID Route (Must be placed AFTER /api/studios/my-listings and /api/studios/featured)
+    // Get Single Studio by ID Route
     app.get('/api/studios/:id', async (req, res) => {
       try {
         const id = req.params.id;
@@ -165,7 +164,35 @@ async function run() {
       }
     });
 
-    // NEW: Delete Studio by ID Route (For /my-listings delete action)
+    // Update Studio API Route (PUT)
+    app.put('/api/studios/:id', async (req, res) => {
+      try {
+        const id = req.params.id;
+        if (!ObjectId.isValid(id)) {
+          return res.status(400).send({ message: "Invalid studio ID format" });
+        }
+        const updatedData = req.body;
+        const filter = { _id: new ObjectId(id) };
+        const updateDoc = {
+          $set: {
+            title: updatedData.title,
+            category: updatedData.category,
+            hourlyRate: Number(updatedData.hourlyRate),
+            maxCapacity: Number(updatedData.maxCapacity || 1),
+            location: updatedData.location,
+            image: updatedData.image,
+            overview: updatedData.overview,
+          },
+        };
+        const result = await studiosCollection.updateOne(filter, updateDoc);
+        return res.status(200).send({ message: "Studio updated successfully", result });
+      } catch (error) {
+        console.error("Error updating studio:", error);
+        return res.status(500).send({ message: "Failed to update studio" });
+      }
+    });
+
+    // Delete Studio by ID Route
     app.delete('/api/studios/:id', async (req, res) => {
       try {
         const id = req.params.id;
