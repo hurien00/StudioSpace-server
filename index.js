@@ -12,13 +12,26 @@ import { toNodeHandler } from "better-auth/node";
 const app = express();
 const port = process.env.PORT || 8000;
 
-const CLIENT_URL = process.env.CLIENT_URL || "http://localhost:3000";
+// CLIENT_URL is the deployed frontend URL. It may contain a comma-separated
+// list so a production domain and Vercel preview deployments can both connect.
+const CLIENT_URLS = (process.env.CLIENT_URL || "http://localhost:3000")
+  .split(",")
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+const CLIENT_URL = CLIENT_URLS[0];
 const JWT_COOKIE_NAME = "studio_token";
 
 const JWKS = createRemoteJWKSet(new URL(`${CLIENT_URL}/api/auth/jwks`));
 
 app.use(cors({
-  origin: CLIENT_URL,
+  origin(origin, callback) {
+    // No Origin header (curl, health checks, server-to-server) is allowed.
+    if (!origin || CLIENT_URLS.includes(origin)) {
+      return callback(null, true);
+    }
+
+    return callback(new Error(`Origin ${origin} is not allowed by CORS`));
+  },
   credentials: true
 }));
 app.use(express.json());
@@ -44,7 +57,11 @@ async function run() {
     console.log("Successfully connected to MongoDB!");
 
     const auth = betterAuth({
-      baseURL: process.env.BETTER_AUTH_URL || "http://localhost:8000",
+      baseURL:
+        process.env.BETTER_AUTH_URL ||
+        (process.env.VERCEL_URL
+          ? `https://${process.env.VERCEL_URL}`
+          : `http://localhost:${port}`),
       secret: process.env.BETTER_AUTH_SECRET,
       database: mongodbAdapter(db, { client }),
       emailAndPassword: { enabled: true },
@@ -180,12 +197,23 @@ async function run() {
       }
     });
 
+    // Studio Route with Ownership Validation
     app.put('/api/studios/:id', verifyToken, async (req, res) => {
       try {
         const id = req.params.id;
         if (!ObjectId.isValid(id)) {
           return res.status(400).send({ message: "Invalid studio ID format" });
         }
+
+        const existingStudio = await studiosCollection.findOne({ _id: new ObjectId(id) });
+        if (!existingStudio) {
+          return res.status(404).send({ message: "Studio not found in database" });
+        }
+
+        if (existingStudio.userEmail !== req.user.email) {
+          return res.status(403).send({ message: "Forbidden: You are not authorized to edit this studio" });
+        }
+
         const updatedData = req.body;
         const filter = { _id: new ObjectId(id) };
         const updateDoc = {
@@ -207,18 +235,25 @@ async function run() {
       }
     });
 
+    // Delete Studio Route with Ownership Validation
     app.delete('/api/studios/:id', verifyToken, async (req, res) => {
       try {
         const id = req.params.id;
         if (!ObjectId.isValid(id)) {
           return res.status(400).send({ message: "Invalid studio ID format" });
         }
-        const query = { _id: new ObjectId(id) };
-        const result = await studiosCollection.deleteOne(query);
 
-        if (result.deletedCount === 0) {
+        const existingStudio = await studiosCollection.findOne({ _id: new ObjectId(id) });
+        if (!existingStudio) {
           return res.status(404).send({ message: "Studio not found in database" });
         }
+
+        if (existingStudio.userEmail !== req.user.email) {
+          return res.status(403).send({ message: "Forbidden: You are not authorized to delete this studio" });
+        }
+
+        const query = { _id: new ObjectId(id) };
+        const result = await studiosCollection.deleteOne(query);
 
         return res.status(200).send({ message: "Studio deleted successfully", result });
       } catch (error) {
@@ -300,7 +335,10 @@ async function run() {
           return res.status(400).send({ message: "Invalid booking ID format" });
         }
 
-        const filter = { _id: new ObjectId(id) };
+        const filter = {
+          _id: new ObjectId(id),
+          userEmail: req.user.email,
+        };
         const updateDoc = {
           $set: { status: "Cancelled" }
         };
@@ -317,13 +355,37 @@ async function run() {
       }
     });
 
-    app.listen(port, () => {
-      console.log(`StudioSpace server active on port ${port}`);
-    });
-
+    return app;
   } catch (error) {
     console.error("MongoDB connection error:", error);
+    throw error;
   }
 }
 
-run().catch(console.dir);
+let startPromise;
+
+function init() {
+  if (!startPromise) {
+    startPromise = run().catch((error) => {
+      startPromise = null;
+      throw error;
+    });
+  }
+  return startPromise;
+}
+
+if (!process.env.VERCEL) {
+  init()
+    .then(() => {
+      app.listen(port, () => {
+        console.log(`StudioSpace server active on port ${port}`);
+      });
+    })
+    .catch((error) => {
+      console.error("Failed to start server:", error);
+      process.exitCode = 1;
+    });
+}
+
+export { app, init };
+export default app;
