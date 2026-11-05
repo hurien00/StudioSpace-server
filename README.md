@@ -4,7 +4,7 @@ Express + MongoDB API for **StudioSpace**, the peer-to-peer creative workspace m
 
 - **Live API:** https://studio-space-backend-two.vercel.app
 - **Client:** https://studio-space-bice.vercel.app
-- **Client repository:** https://github.com/hurien00/StudioSpace
+- **Client repository:** https://github.com/hurien00/StudioSpace-client
 
 ## What it does
 

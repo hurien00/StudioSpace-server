@@ -34,7 +34,7 @@ app.use(cors({
   },
   credentials: true
 }));
-app.use(express.json());
+app.use(express.json({ limit: "8mb" }));
 app.use(cookieParser());
 
 const uri = process.env.MONGODB_URI;
